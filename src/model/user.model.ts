@@ -50,6 +50,10 @@ const userSchema = new Schema<UserModel>(
       enum: Object.values(userRole),
       default: userRole.USER,
     } as any,
+    clioMatterId:{
+      type:String,
+      default:""
+    }
   },
   { timestamps: true }
 );

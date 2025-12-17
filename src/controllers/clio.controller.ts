@@ -4,6 +4,7 @@ import { SUCCESS, TryCatch } from "../utils/helper";
 import ErrorHandler from "../utils/ErrorHandler";
 import User from "../model/user.model";
 import { userRole } from "../utils/enums";
+import { createClioMatter } from "../utils/createClioMatter";
 
 
 // Controller to fetch Clio contacts/users
@@ -193,10 +194,16 @@ export const createClioContactForUser = TryCatch(
             }
 
             user.clioContactId = clioContactId;
+            const matter = await createClioMatter(clioContactId, "the hero’s law firm");
+
+            // Optional: store matter ID if you want
+            user.clioMatterId = matter?.id;
+
             await user.save();
 
             return SUCCESS(res, 200, "Clio contact created successfully", {
                 clioContactId,
+                clioMatterId: matter?.id,
                 userId: user._id,
             });
         } catch (err: any) {
@@ -274,6 +281,10 @@ export const assignClioContactToUser = TryCatch(
 
         // 5️⃣ Assign contact ID
         user.clioContactId = clioContactId;
+        const matter = await createClioMatter(clioContactId, "the hero’s law firm subscription  ");
+
+        // Optional: store matter ID if you want
+        user.clioMatterId = matter?.id;
         await user.save();
 
         // 6️⃣ Success
@@ -306,7 +317,7 @@ export const fetchDashboardData = TryCatch(
                 User.countDocuments({ role: userRole.USER, isVerified: false }),
                 User.countDocuments({
                     role: userRole.USER,
-                    clioContactId: { $exists: true, $ne: null },
+                    clioContactId: { $exists: true, $ne: "" },
                 }),
                 User.countDocuments({ role: userRole.USER, isDeleted: true }),
             ]);

@@ -2,6 +2,7 @@ import { Document, Types } from "mongoose";
 
 export interface UserModel extends Document {
   name: string;
+  clioMatterId:string
   lastName: string;
   email: string;
   countryCode: string;
