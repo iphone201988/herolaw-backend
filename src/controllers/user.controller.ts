@@ -101,7 +101,7 @@ const verifyOtp = TryCatch(
     res: Response,
     next: NextFunction
   ) => {
-    const { userId, otp, type } = req.body; 
+    const { userId, otp, type } = req.body;
     const user = await getUserById(userId);
     const now = new Date();
     if (user.otpExpiry < now) {
@@ -115,9 +115,26 @@ const verifyOtp = TryCatch(
 
     user.otp = undefined;
     user.otpExpiry = undefined;
-    if (type == 1) user.isVerified = true;
+    if (type == 1) {
+      user.isVerified = true
+      user.otpVerified = true;
+      const jti = generateRandomString(20);
+      const token = generateJwtToken({ userId: user._id, jti });
+      user.jti = jti;
+
+      await user.save();
+
+      return SUCCESS(res, 200, "LoggedIn successfully", {
+        data: {
+          token: token ? token : undefined,
+          user: getFileteredUser(user.toObject()),
+        },
+      });
+    }
     user.otpVerified = true;
     await user.save();
+
+
     return SUCCESS(res, 200, `OTP verified successfully`, {
       data: {
         userId: user._id,
@@ -309,7 +326,7 @@ const changePassword = TryCatch(
     const { userId, password } = req.body;
     const user = await getUserById(userId);
 
-    if (!user.otpVerified && user.isVerified){
+    if (!user.otpVerified && user.isVerified) {
       return next(new ErrorHandler("User OTP is not verified", 400));
     }
 

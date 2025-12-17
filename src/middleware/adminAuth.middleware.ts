@@ -8,7 +8,7 @@ export const adminAuthMiddleware = TryCatch(
   async (req: Request, res: Response, next: NextFunction) => {
     const authHeader = req.headers["authorization"];
     if (!authHeader)
-      return next(new ErrorHandler("Please login to access the route", 401));
+      return next(new ErrorHandler("Please login to access the route", 402));
 
     const token = authHeader.split(" ")[1];
     const decode = jwt.verify(token, process.env.JWT_SECRET) as JwtPayload;

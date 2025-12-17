@@ -9,6 +9,7 @@ import { UserModel } from "../type/Database/types";
 
 const userSchema = new Schema<UserModel>(
   {
+    clioContactId:{type:String , default:""},
     name: { type: String, require: true },
     lastName: { type: String, require: true },
     email: { type: String, require: true },

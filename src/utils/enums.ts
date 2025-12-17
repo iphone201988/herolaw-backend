@@ -7,6 +7,7 @@ export const userRole = {
   USER: "user",
   ATTORNEY: "attorney",
   ADMIN: "admin",
+  CARETAKER:"caretaker"
 } as const;
 
 export const adminRoles = {
