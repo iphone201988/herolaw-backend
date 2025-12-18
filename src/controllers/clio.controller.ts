@@ -382,10 +382,303 @@ export const fetchDashboardData = TryCatch(
     }
 );
 
+
+
+export const createClioActivityDescription = TryCatch(
+    async (req: Request, res: Response, next: NextFunction) => {
+        const {
+            name,
+            currency,
+            default: isDefault,
+            rate,
+            visible_to_co_counsel,
+            groups,
+        } = req.body;
+
+        // 1️⃣ Validate input
+        if (!name || !currency || !rate) {
+            return next(
+                new ErrorHandler(
+                    "name, currency, and rate are required",
+                    400
+                )
+            );
+        }
+
+        const accessToken = process.env.CLIO_ACCESS_TOKEN;
+        if (!accessToken) {
+            return next(
+                new ErrorHandler("Clio access token not found", 500)
+            );
+        }
+
+        // 2️⃣ Build request payload (Clio expects `data`)
+        const payload: any = {
+            data: {
+                name,
+                currency,
+                default: isDefault ?? false,
+                rate,
+                visible_to_co_counsel: visible_to_co_counsel ?? false,
+            },
+        };
+
+        // Optional groups
+        if (Array.isArray(groups) && groups.length > 0) {
+            payload.data.groups = groups;
+        }
+
+        // 3️⃣ Create Activity Description in Clio
+        const clioResponse = await fetch(
+            "https://app.clio.com/api/v4/activity_descriptions.json",
+            {
+                method: "POST",
+                headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                    Accept: "application/json",
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(payload),
+            }
+        );
+
+        if (!clioResponse.ok) {
+            const errorBody = await clioResponse.text();
+            return next(
+                new ErrorHandler(
+                    `Failed to create activity description: ${errorBody}`,
+                    clioResponse.status
+                )
+            );
+        }
+
+        const clioData = await clioResponse.json();
+
+        // 4️⃣ Success
+        return SUCCESS(
+            res,
+            201,
+            "Activity description created successfully",
+            clioData.data
+        );
+    }
+);
+
+
+
+export const getClioActivityDescriptions = TryCatch(
+    async (req: Request, res: Response, next: NextFunction) => {
+        const accessToken = process.env.CLIO_ACCESS_TOKEN;
+
+        if (!accessToken) {
+            return next(
+                new ErrorHandler("Clio access token not found", 500)
+            );
+        }
+
+        // Optional query params
+        const { fields, page, per_page } = req.query;
+
+        // Build query string
+        const queryParams = new URLSearchParams();
+
+        if (fields) queryParams.append("fields", String(fields));
+        if (page) queryParams.append("page", String(page));
+        if (per_page) queryParams.append("per_page", String(per_page));
+
+        const url = `https://app.clio.com/api/v4/activity_descriptions.json?fields=rate,id,name`;
+
+        // Fetch activity descriptions
+        const clioResponse = await fetch(url, {
+            method: "GET",
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+                Accept: "application/json",
+            },
+        });
+
+        if (!clioResponse.ok) {
+            const errorBody = await clioResponse.text();
+            return next(
+                new ErrorHandler(
+                    `Failed to fetch activity descriptions: ${errorBody}`,
+                    clioResponse.status
+                )
+            );
+        }
+
+        const clioData = await clioResponse.json();
+
+        // Success
+        return SUCCESS(
+            res,
+            200,
+            "Activity descriptions fetched successfully",
+            {
+                meta: clioData.meta,
+                data: clioData.data,
+            }
+        );
+    }
+);
+
+
+
+
+export const updateClioActivityDescription = TryCatch(
+    async (req: Request, res: Response, next: NextFunction) => {
+        const { id } = req.params;
+        const { name, rate, visible_to_co_counsel } = req.body;
+
+        // 1️⃣ Validate input
+        if (!id) {
+            return next(
+                new ErrorHandler("Activity description id is required", 400)
+            );
+        }
+
+        if (!rate && !name && visible_to_co_counsel === undefined) {
+            return next(
+                new ErrorHandler(
+                    "At least one field (name, rate, visible_to_co_counsel) is required to update",
+                    400
+                )
+            );
+        }
+
+        const accessToken = process.env.CLIO_ACCESS_TOKEN;
+        if (!accessToken) {
+            return next(
+                new ErrorHandler("Clio access token not found", 500)
+            );
+        }
+
+        // 2️⃣ Build payload (Clio requires `data`)
+        const payload: any = {
+            data: {},
+        };
+
+        if (name) payload.data.name = name;
+        if (rate) payload.data.rate = rate;
+        if (visible_to_co_counsel !== undefined) {
+            payload.data.visible_to_co_counsel = visible_to_co_counsel;
+        }
+
+        // 3️⃣ Update Activity Description in Clio
+        const clioResponse = await fetch(
+            `https://app.clio.com/api/v4/activity_descriptions/${id}.json`,
+            {
+                method: "PUT",
+                headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                    Accept: "application/json",
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(payload),
+            }
+        );
+
+        if (clioResponse.status === 404) {
+            return next(
+                new ErrorHandler(
+                    "Activity description not found in Clio",
+                    404
+                )
+            );
+        }
+
+        if (!clioResponse.ok) {
+            const errorBody = await clioResponse.text();
+            return next(
+                new ErrorHandler(
+                    `Failed to update activity description: ${errorBody}`,
+                    clioResponse.status
+                )
+            );
+        }
+
+        const clioData = await clioResponse.json();
+
+        // 4️⃣ Success
+        return SUCCESS(
+            res,
+            200,
+            "Activity description updated successfully",
+            clioData.data
+        );
+    }
+);
+
+
+
+
+export const deleteClioActivityDescription = TryCatch(
+    async (req: Request, res: Response, next: NextFunction) => {
+        const { id } = req.params;
+
+        // 1️⃣ Validate input
+        if (!id) {
+            return next(
+                new ErrorHandler("Activity description id is required", 400)
+            );
+        }
+
+        const accessToken = process.env.CLIO_ACCESS_TOKEN;
+        if (!accessToken) {
+            return next(
+                new ErrorHandler("Clio access token not found", 500)
+            );
+        }
+
+        // 2️⃣ Delete activity description from Clio
+        const clioResponse = await fetch(
+            `https://app.clio.com/api/v4/activity_descriptions/${id}.json`,
+            {
+                method: "DELETE",
+                headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                    Accept: "application/json",
+                },
+            }
+        );
+
+        if (clioResponse.status === 404) {
+            return next(
+                new ErrorHandler(
+                    "Activity description not found in Clio",
+                    404
+                )
+            );
+        }
+
+        if (!clioResponse.ok) {
+            const errorBody = await clioResponse.text();
+            return next(
+                new ErrorHandler(
+                    `Failed to delete activity description: ${errorBody}`,
+                    clioResponse.status
+                )
+            );
+        }
+
+        // 3️⃣ Success (Clio returns 204 No Content)
+        return SUCCESS(
+            res,
+            200,
+            "Activity description deleted successfully",
+            { id }
+        );
+    }
+);
+
 export default {
     fetchDashboardData,
     assignClioContactToUser,
     fetchClioContacts,
     fetchUsers,
-    createClioContactForUser
+    createClioContactForUser,
+    createClioActivityDescription,
+    getClioActivityDescriptions,
+    updateClioActivityDescription,
+    deleteClioActivityDescription
 }

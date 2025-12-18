@@ -33,5 +33,29 @@ clioRouter.get(
     clioController.fetchDashboardData
 )
 
+clioRouter.post(
+  "/activity-description",
+  adminAuthMiddleware,
+  clioController.createClioActivityDescription
+)
+
+clioRouter.get(
+  "/activity-description",
+  adminAuthMiddleware,
+  clioController.getClioActivityDescriptions
+)
+
+clioRouter.put(
+  "/activity-description/:id",
+  adminAuthMiddleware,
+  clioController.updateClioActivityDescription
+)
+
+
+clioRouter.delete(
+  "/activity-description/:id",
+  adminAuthMiddleware,
+  clioController.deleteClioActivityDescription
+)
 
 export default clioRouter
