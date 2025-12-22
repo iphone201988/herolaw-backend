@@ -1,6 +1,7 @@
 import { Document, Types } from "mongoose";
 
 export interface UserModel extends Document {
+  pointValue:number;
   name: string;
   clioMatterId:string
   lastName: string;
@@ -27,7 +28,7 @@ export interface UserModel extends Document {
   isVerified: boolean;
   isDeleted: boolean;
   isDeactivated: boolean;
-  role: "user" | "attorney" | "admin";
+  role: "user" | "attorney" | "admin" | "caretaker";
   relationship: string;
   country: string;
   gender: string;
@@ -80,6 +81,7 @@ export interface UserModel extends Document {
   blockedBy: any;
   reportedBy: any;
   isInVideoCall: boolean;
+  points:number
 
   matchPassword(password: string): Promise<boolean>;
 }

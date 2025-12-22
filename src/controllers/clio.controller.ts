@@ -5,6 +5,7 @@ import ErrorHandler from "../utils/ErrorHandler";
 import User from "../model/user.model";
 import { userRole } from "../utils/enums";
 import { createClioMatter } from "../utils/createClioMatter";
+import { getAdminPointValue } from "../utils/getPointValue";
 
 
 // Controller to fetch Clio contacts/users
@@ -311,6 +312,7 @@ export const fetchDashboardData = TryCatch(
                 unverifiedUsers,
                 clioLinkedUsers,
                 deletedUsers,
+                adminPointValue,
             ] = await Promise.all([
                 User.countDocuments({ role: userRole.USER }),
                 User.countDocuments({ role: userRole.USER, isVerified: true }),
@@ -320,6 +322,16 @@ export const fetchDashboardData = TryCatch(
                     clioContactId: { $exists: true, $ne: "" },
                 }),
                 User.countDocuments({ role: userRole.USER, isDeleted: true }),
+
+                // 🔹 Fetch admin point value
+                User.findOne(
+                    {
+                        role: userRole.ADMIN,
+                        email: "admin@yopmail.com",
+                        isDeleted: false,
+                    },
+                    { pointValue: 1 }
+                ).lean(),
             ]);
 
             /* =============================
@@ -369,6 +381,9 @@ export const fetchDashboardData = TryCatch(
                     clioLinkedUsers,
                     deletedUsers,
                 },
+                adminConfig: {
+                    pointValue: adminPointValue?.pointValue || 0,
+                },
                 charts: {
                     usersByMonth,
                 },
@@ -376,7 +391,10 @@ export const fetchDashboardData = TryCatch(
             });
         } catch (err: any) {
             return next(
-                new ErrorHandler(err.message || "Failed to fetch dashboard data", 500)
+                new ErrorHandler(
+                    err.message || "Failed to fetch dashboard data",
+                    500
+                )
             );
         }
     }
@@ -671,6 +689,211 @@ export const deleteClioActivityDescription = TryCatch(
     }
 );
 
+
+
+
+
+export const getClioActivityDescriptionsForUser = TryCatch(
+    async (req: Request, res: Response, next: NextFunction) => {
+        const accessToken = process.env.CLIO_ACCESS_TOKEN;
+
+        if (!accessToken) {
+            return next(
+                new ErrorHandler("Clio access token not found", 500)
+            );
+        }
+
+        // 🔹 Get admin point value
+        const adminPointValue = await getAdminPointValue();
+
+        if (!adminPointValue || adminPointValue <= 0) {
+            return next(
+                new ErrorHandler("Admin point value not configured", 500)
+            );
+        }
+
+        const url = `https://app.clio.com/api/v4/activity_descriptions.json?fields=rate,id,name`;
+
+        const clioResponse = await fetch(url, {
+            method: "GET",
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+                Accept: "application/json",
+            },
+        });
+
+        if (!clioResponse.ok) {
+            const errorBody = await clioResponse.text();
+            return next(
+                new ErrorHandler(
+                    `Failed to fetch activity descriptions: ${errorBody}`,
+                    clioResponse.status
+                )
+            );
+        }
+
+        const clioData = await clioResponse.json();
+
+        // 🔹 Transform amount → points
+        const transformedData = clioData.data.map((item: any) => {
+            const amount = item.rate?.amount || 0;
+
+            return {
+                id: item.id,
+                name: item.name,
+                points: Math.round(amount / adminPointValue), // 👈 formula
+            };
+        });
+
+        return SUCCESS(
+            res,
+            200,
+            "Activity descriptions fetched successfully",
+            {
+                meta: clioData.meta,
+                data: transformedData,
+            }
+        );
+    }
+);
+
+
+
+
+export const createClioActivityWithPoints = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+) => {
+    try {
+        const accessToken = process.env.CLIO_ACCESS_TOKEN;
+        if (!accessToken) {
+            return next(new ErrorHandler("Clio access token not found", 500));
+        }
+
+        const { activityDescriptionId, points, date } = req.body;
+
+        if (!activityDescriptionId || !points || !date) {
+            return next(
+                new ErrorHandler(
+                    "activityDescriptionId, points and date are required",
+                    400
+                )
+            );
+        }
+
+        // 🔹 Fetch logged-in user
+        const user = await User.findById(req.user._id).lean();
+
+        if (!user || !user.clioMatterId) {
+            return next(
+                new ErrorHandler("User Clio matter not configured", 400)
+            );
+        }
+
+        // 🔹 Fetch admin point value
+        const adminPointValue = await getAdminPointValue();
+
+        if (!adminPointValue || adminPointValue <= 0) {
+            return next(
+                new ErrorHandler("Admin point value not configured", 500)
+            );
+        }
+
+        // 🔹 Calculate price
+        const price = Number((points * adminPointValue).toFixed(2));
+
+        // 🔹 Clio payload (ONLY required fields)
+        const payload = {
+            data: {
+                type: "TimeEntry",
+                date,
+                activity_description: {
+                    id: activityDescriptionId,
+                },
+                matter: {
+                    id: user.clioMatterId,
+                },
+                price,
+            },
+        };
+
+        // 🔹 Call Clio API
+        const clioResponse = await fetch(
+            "https://app.clio.com/api/v4/activities.json",
+            {
+                method: "POST",
+                headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                    Accept: "application/json",
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(payload),
+            }
+        );
+
+        if (!clioResponse.ok) {
+            const errorText = await clioResponse.text();
+            return next(
+                new ErrorHandler(
+                    `Failed to create Clio activity: ${errorText}`,
+                    clioResponse.status
+                )
+            );
+        }
+
+        const clioData = await clioResponse.json();
+
+        return SUCCESS(res, 201, "Clio activity created successfully", {
+            clioActivityId: clioData.data?.id,
+            points,
+            price,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+
+export const updateAdminPointValue = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { pointValue } = req.body;
+
+    if (!pointValue || pointValue <= 0) {
+      return next(
+        new ErrorHandler("Valid pointValue is required", 400)
+      );
+    }
+
+    const admin = await User.findOneAndUpdate(
+      {
+        email: "admin@yopmail.com",
+        role: userRole.ADMIN,
+        isDeleted: false,
+      },
+      { pointValue },
+      { new: true }
+    );
+
+    if (!admin) {
+      return next(new ErrorHandler("Admin not found", 404));
+    }
+
+    return SUCCESS(res, 200, "Point value updated successfully", {
+      pointValue: admin.pointValue,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+
 export default {
     fetchDashboardData,
     assignClioContactToUser,
@@ -680,5 +903,8 @@ export default {
     createClioActivityDescription,
     getClioActivityDescriptions,
     updateClioActivityDescription,
-    deleteClioActivityDescription
+    deleteClioActivityDescription,
+    getClioActivityDescriptionsForUser,
+    createClioActivityWithPoints,
+    updateAdminPointValue
 }

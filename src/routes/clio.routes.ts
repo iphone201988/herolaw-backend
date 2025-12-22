@@ -8,29 +8,29 @@ const clioRouter = express.Router();
 
 clioRouter.get(
   "/users",
- adminAuthMiddleware,
+  adminAuthMiddleware,
   clioController.fetchClioContacts
 );
 clioRouter.get(
   "/hero-users",
- adminAuthMiddleware,
+  adminAuthMiddleware,
   clioController.fetchUsers
 );
 
 clioRouter.post(
-    "/create-clio-contact/:id",
-    adminAuthMiddleware,
-    clioController.createClioContactForUser
+  "/create-clio-contact/:id",
+  adminAuthMiddleware,
+  clioController.createClioContactForUser
 )
 clioRouter.post(
-    "/assign",
-    adminAuthMiddleware,
-    clioController.assignClioContactToUser
+  "/assign",
+  adminAuthMiddleware,
+  clioController.assignClioContactToUser
 )
 clioRouter.get(
-    "/dashboard",
-    adminAuthMiddleware,
-    clioController.fetchDashboardData
+  "/dashboard",
+  adminAuthMiddleware,
+  clioController.fetchDashboardData
 )
 
 clioRouter.post(
@@ -43,6 +43,11 @@ clioRouter.get(
   "/activity-description",
   adminAuthMiddleware,
   clioController.getClioActivityDescriptions
+)
+clioRouter.get(
+  "/activity-description-user",
+  authenticationMiddleware,
+  clioController.getClioActivityDescriptionsForUser
 )
 
 clioRouter.put(
@@ -57,5 +62,18 @@ clioRouter.delete(
   adminAuthMiddleware,
   clioController.deleteClioActivityDescription
 )
+
+clioRouter.post(
+  "/create-activity",
+  authenticationMiddleware,
+  clioController.createClioActivityWithPoints
+)
+
+clioRouter.post(
+  "/update-point-value",
+  adminAuthMiddleware,
+  clioController.updateAdminPointValue
+)
+
 
 export default clioRouter
