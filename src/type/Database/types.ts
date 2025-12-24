@@ -17,6 +17,7 @@ export interface UserModel extends Document {
     type: "Point";
     coordinates: [number, number]; // [longitude, latitude]
   };
+  grade?:string;
   clioContactId?:string;
   deviceToken?: string;
   voipToken: string;

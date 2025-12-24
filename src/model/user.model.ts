@@ -19,6 +19,7 @@ const userSchema = new Schema<UserModel>(
     physicalAddress: { type: String, default: "" },
     mailingAddress: { type: String, default: "" },
     socialId: { type: String },
+    grade:{type:String,default:""},
     socialType: {
       type: Number,
       enum: Object.values(socialTypeEnums),
