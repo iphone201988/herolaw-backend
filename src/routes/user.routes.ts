@@ -42,6 +42,13 @@ userRouter.put(
   userController.changePassword
 );
 
+userRouter.put(
+  "/updateProfile",
+  authenticationMiddleware,
+  validate(userSchema.updateProfileSchema),
+  userController.updateUserProfile
+);
+
 userRouter.get("/", authenticationMiddleware, userController.getUser);
 
 userRouter.get("/logout", authenticationMiddleware, userController.logout);

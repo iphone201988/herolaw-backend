@@ -366,6 +366,236 @@ const logout = TryCatch(
   }
 );
 
+
+
+
+
+export const updateUserProfile = TryCatch(
+    async (req: Request, res: Response, next: NextFunction) => {
+        console.log("Update Profile Called", req.userId);
+        const id = req.userId;
+        const userId = id;
+
+        // Fields that can be updated
+        const {
+            name,
+            lastName,
+            countryCode,
+            phone,
+            physicalAddress,
+            mailingAddress,
+            grade,
+        } = req.body;
+
+        if (!userId) {
+            return next(new ErrorHandler("User ID is required", 400));
+        }
+
+        const CLIO_ACCESS_TOKEN = process.env.CLIO_ACCESS_TOKEN;
+        if (!CLIO_ACCESS_TOKEN) {
+            return next(new ErrorHandler("Clio access token not found", 500));
+        }
+
+        // Find user
+        const user = await User.findById(userId);
+        if (!user) {
+            return next(new ErrorHandler("User not found", 404));
+        }
+
+        if (!user.clioContactId) {
+            return next(
+                new ErrorHandler("User does not have a Clio contact linked", 400)
+            );
+        }
+
+        try {
+            // Step 1: Get existing contact data from Clio
+            const getResponse = await fetch(
+                `https://app.clio.com/api/v4/contacts/${user.clioContactId}.json?fields=custom_field_values{id,custom_field},addresses{id,name},phone_numbers{id,name}`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${CLIO_ACCESS_TOKEN}`,
+                        Accept: "application/json",
+                    },
+                }
+            );
+
+            if (!getResponse.ok) {
+                const errorBody = await getResponse.text();
+                return next(
+                    new ErrorHandler(
+                        `Failed to fetch Clio contact: ${errorBody}`,
+                        getResponse.status
+                    )
+                );
+            }
+
+            const existingContact = await getResponse.json();
+            const existingCustomFields = existingContact?.data?.custom_field_values || [];
+            const existingAddresses = existingContact?.data?.addresses || [];
+            const existingPhones = existingContact?.data?.phone_numbers || [];
+
+            // Step 2: Prepare update payload for Clio
+            const clioPayload: any = {
+                data: {
+                    type: "Person",
+                },
+            };
+
+            // Update basic fields
+            if (name !== undefined) {
+                clioPayload.data.first_name = name;
+            }
+            if (lastName !== undefined) {
+                clioPayload.data.last_name = lastName;
+            }
+
+            // Update phone - Update existing or create new
+            if (phone !== undefined || countryCode !== undefined) {
+                const phoneNumber = `${countryCode || user.countryCode}${phone || user.phone}`;
+                
+                // Find existing mobile phone
+                const existingMobilePhone = existingPhones.find(
+                    (p: any) => p.name === "Mobile" || p.default_number
+                );
+
+                if (existingMobilePhone) {
+                    // Update existing phone
+                    clioPayload.data.phone_numbers = [
+                        {
+                            id: existingMobilePhone.id,
+                            name: "Mobile",
+                            number: phoneNumber,
+                            default_number: true,
+                        },
+                    ];
+                } else {
+                    // Create new phone
+                    clioPayload.data.phone_numbers = [
+                        {
+                            name: "Mobile",
+                            number: phoneNumber,
+                            default_number: true,
+                        },
+                    ];
+                }
+            }
+
+            // Update addresses - Use valid Clio address names
+            const addresses = [];
+            
+            if (physicalAddress !== undefined) {
+                // Find existing "Home" address or create new
+                const existingHomeAddress = existingAddresses.find(
+                    (addr: any) => addr.name === "Home"
+                );
+
+                if (existingHomeAddress) {
+                    addresses.push({
+                        id: existingHomeAddress.id,
+                        name: "Home", // ✅ Valid Clio address type
+                        street: physicalAddress,
+                    });
+                } else {
+                    addresses.push({
+                        name: "Home", // ✅ Valid Clio address type
+                        street: physicalAddress,
+                    });
+                }
+            }
+
+            if (mailingAddress !== undefined) {
+                // Find existing "Other" address or create new
+                const existingOtherAddress = existingAddresses.find(
+                    (addr: any) => addr.name === "Other"
+                );
+
+                if (existingOtherAddress) {
+                    addresses.push({
+                        id: existingOtherAddress.id,
+                        name: "Other", // ✅ Valid Clio address type
+                        street: mailingAddress,
+                    });
+                } else {
+                    addresses.push({
+                        name: "Other", // ✅ Valid Clio address type
+                        street: mailingAddress,
+                    });
+                }
+            }
+
+            if (addresses.length > 0) {
+                clioPayload.data.addresses = addresses;
+            }
+
+            // Update grade as custom field
+            if (grade !== undefined) {
+                const gradeCustomField = existingCustomFields.find(
+                    (cf: any) => cf.field_name === "grade"
+                );
+
+                if (gradeCustomField) {
+                    clioPayload.data.custom_field_values = [
+                        {
+                            id: gradeCustomField.id,
+                            custom_field: {
+                                id: gradeCustomField.custom_field.id,
+                            },
+                            value: grade,
+                        },
+                    ];
+                }
+            }
+
+            console.log("Clio Payload:", JSON.stringify(clioPayload, null, 2));
+
+            // Step 3: Update Clio contact
+            const updateResponse = await fetch(
+                `https://app.clio.com/api/v4/contacts/${user.clioContactId}.json`,
+                {
+                    method: "PATCH",
+                    headers: {
+                        Authorization: `Bearer ${CLIO_ACCESS_TOKEN}`,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify(clioPayload),
+                }
+            );
+
+            if (!updateResponse.ok) {
+                const errorBody = await updateResponse.text();
+                return next(
+                    new ErrorHandler(
+                        `Failed to update Clio contact: ${errorBody}`,
+                        updateResponse.status
+                    )
+                );
+            }
+
+            // Step 4: Update local database
+            if (name !== undefined) user.name = name;
+            if (lastName !== undefined) user.lastName = lastName;
+            if (countryCode !== undefined) user.countryCode = countryCode;
+            if (phone !== undefined) user.phone = phone;
+            if (physicalAddress !== undefined) user.physicalAddress = physicalAddress;
+            if (mailingAddress !== undefined) user.mailingAddress = mailingAddress;
+            if (grade !== undefined) user.grade = grade;
+
+            await user.save();
+
+            return SUCCESS(res, 200, "User profile updated successfully", {
+                userId: user._id,
+                clioContactId: user.clioContactId,
+                userData: getFileteredUser(user.toObject()),
+            });
+        } catch (err: any) {
+            return next(
+                new ErrorHandler(err.message || "Unknown error", 500)
+            );
+        }
+    }
+);
+
 export default {
   register,
   verifyOtp,
@@ -375,5 +605,6 @@ export default {
   socialLogin,
   getUser,
   logout,
+  updateUserProfile
 };
 
